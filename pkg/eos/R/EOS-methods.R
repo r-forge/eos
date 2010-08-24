@@ -1,53 +1,152 @@
-##----------------------------------------------------------------##
+##--------------------------------------------------------------##
 ##                         Methods
-##----------------------------------------------------------------##
+##--------------------------------------------------------------##
 
-##setGeneric('plot',function(obj,...) standardGeneric('plot'))
 setGeneric('plot')
 
 ##----------------------------------------------------------------##
-##               Constructor for EOSTrackSector
+##                Methods for GraphicsPars
 ##----------------------------------------------------------------##
 
-EOSTrackSector <- function(obj,order=NULL,length=NULL,width=NULL,scale=NULL,...){
-  if(extends(class(obj),'data.frame')){
-    if(c('start','end')%in%names(obj)){
-      obj <- IRanges(start=obj$start,end=obj$end)
-    }else{ if(c('start','width')%in%names(obj)){
-      obj <- IRanges(start=obj$start,width=obj$width)
-    }else{
-      stop('Please specify the start and end/width column!')
-    }
-         }}else{
-           if(!extends(class(obj),'IRanges'))
-             stop('Please input a IRanges object')
-         }
-  if(is.null(order)) order <- 1
-  if(is.null(length)) length <- 200
-  if(is.null(width)) width <- 50
-  if(is.null(scale)) scale <- max(end(obj))
+setGeneric('setPar',function(obj,...) standardGeneric('setPar'))
+setMethod('setPar','GraphicPars',
+          function(obj,name,value){
+            assign(name,value,obj@pars)
+          })
 
-  res <- new('EOSTrackSector',order=order,length=length,width=width,scale=scale,data=obj)
+setGeneric('getPar',function(obj,...) standardGeneric('getPar'))
+setMethod('getPar','GraphicPars',
+          function(obj,name){
+            if(!exists(name,obj@pars))
+              stop(paste('No graphic parameter named',name,'could be found!'))
+            get(name,obj@pars)
+          })
+
+setMethod('show','GraphicPars',function(object){
+  sapply(ls(object@pars), function(x) {
+    y <- getPar(object, x)
+    if (length(y) > 10)
+      y <- y[1:10]
+    cat(x, " = ", toString(y), "\n")
+  })
+})
+
+pushCon <- function(gp1, gp2) {
+  if (is.null(gp1) && is.null(gp2))
+    return(DisplayPars())
+  if (is.null(gp1)) 
+    return(gp2)
+  if (is.null(gp2))
+    return(gp1)
+  sapply(ls(gp1@pars), function(nm) {
+    setPar(gp2, nm, getPar(gp1, nm))
+  })
+  return(gp2)
+}
+
+
+
+
+
+##----------------------------------------------------------------##
+##                Constructor for GraphicsPars
+##----------------------------------------------------------------##
+
+GraphicPars <- function(...){
+  args <- list(...)
+  gp <- new('GraphicPars')
+  ##  i <- match(names(args),'gp')
+  if(length(args)>0){
+    lapply(1:length(args),function(i){
+      setPar(gp,names(args)[i],args[[i]])
+    })
+  }
+  gp
+}
+
+
+
+##--------------------------------------------------------------##
+##               Constructor for EOSTrack
+##--------------------------------------------------------------##
+
+EOSTrack <- function(obj,type,...){
+  gp1 <- GraphicPars(...)
+  if(!extends(class(obj),'RangedData'))
+    stop('Input object should be RangedData object.')
+  if(!(type%in%.TYPES))
+    stop(paste('typs should only be',.TYPES))
+  gp2 <- GraphicPars()
+  ##gp2@pars$order <- 1
+  ##gp2@pars$width <-
+  gp <- pushCon(gp1,gp2)
+  res <- new('EOSTrack',data=obj,type=type,pars=gp@pars)
   res
 }
 
-setMethod('plot','EOSTrackSector',function(x,...){
-##  if(is.null(myscale)) myscale <- max(end(x@data))
-  myscale <- x@scale
-  paths <- lapply(1:length(x@data),function(i){
-    sa <- start(x@data)[i]/myscale*360
-    sl <- width(x@data)[i]/myscale*360
-    paths <- qglyphSector(0,0,length=x@length,width=x@width,
-                         startAngle=sa,sweepLength=sl)
-  })
-  paintFun <- function(layer,painter){
-    qdrawPath(painter,paths,fill='red',stroke=NA)
-  }
+##--------------------------------------------------------------##
+##               Constructor for EOSView
+##--------------------------------------------------------------##
+
+EOSView <- function(obj,...){
+  ## obj should be a list of EOSTrack
+  if(!all(lapply(obj,function(x){
+    class(x)=='EOSTrack'
+  })))
+    stop('All the track object should be EOSTrack')
+  gp1 <- GraphicPars(...)
+  gp2 <- GraphicPars()
+  gp2@pars$width <- 20
+  gp2@pars$length <- 100
+  gp2@pars$skip <- 10
+  gp2@pars$theme <- 'default'
+  gp2@pars$spaceRate <- 0.01
+  ##gp2@pars$scale <- 
+  gp <- pushCon(gp1,gp2)
+  res <- new('EOSView',listData=obj,pars=gp@pars)
+}
+
+
+setMethod('plot','EOSView',function(x,...){
+  ## if(is.null(myscale)) myscale <- max(end(x@data))
+  ## myscale <- x@pars$scale
   scene <- qscene()
-  len <- x@length+x@width+20
-  layer <- qlayer(scene,paintFun=paintFun,limits=qrect(c(-len,len),c(-len,len)),geometry=qrect(0,0,400,400))
+  spaceRate <- x@pars$spaceRate
+  sp <- spaceRate*360
+  skip <- x@pars$skip
+  len <- x@pars$length+(x@pars$width+20)*length(x@listData)
+  ##for(n in 1:length(x@listData)){
+  lapply(1:length(x@listData),function(n){
+    rd <- x@listData[[n]]@data
+    tp <- x@listData[[n]]@type
+    if(tp=='sector'){
+    ## rd$width <- width(rd)/sum(as.numeric(width(rd)))*(360-sp*length(rd))
+    ## rd$start <- c(0,cumsum(rd$width)[-(length(rd))])+(1:length(rd)-1)*sp
+    mw <- width(rd)/sum(as.numeric(width(rd)))*(360-sp*length(rd))
+    ms <- c(0,cumsum(mw)[-(length(rd))])+(1:length(rd)-1)*sp
+    paths <- lapply(1:length(rd),function(i){
+      sa <- ms[i]
+      sl <- mw[i]
+      l <- x@pars$length
+      w <- x@pars$width
+      paths <- qglyphSector(0,0,length=l+w*(n-1)+skip*(n-1),width=w,
+                            startAngle=sa,sweepLength=sl)
+    })
+      paintFun <- function(layer,painter){
+      qdrawPath(painter,paths,fill=rainbow(length(paths)),stroke=NA)
+    }
+  }
+    if(tp=='segment'){
+      mw <- width(rd)/sum(as.numeric(width(rd)))*(360-sp*length(rd))
+    ms <- c(0,cumsum(mw)[-(length(rd))])+(1:length(rd)-1)*sp
+    }
+      qlayer(scene,paintFun=paintFun,limits=qrect(c(-len,len),c(-len,len)),geometry=qrect(0,0,400,400))
+
+  })
+  ## layer <- qlayer(scene,paintFun=paintFun,limits=qrect(c(-len,len),c(-len,len)),geometry=qrect(0,0,400,400))
   view <- qplotView(scene)
   view$show()
-  list(scene,layer,view)
+  invisible(list(scene,view))
 })
+
 

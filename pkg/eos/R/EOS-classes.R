@@ -1,22 +1,29 @@
-##----------------------------------------------------------------##
+##--------------------------------------------------------------##
 ##                     Classes
-##----------------------------------------------------------------##
-
+##--------------------------------------------------------------##
 
 setClassUnion('numericOrNULL',c('numeric','NULL'))
 
-setClass('EOS',contains='VIRTUAL')
+setClassUnion('characterOrNULL',c('character','NULL'))
 
-setClass('EOSTrack',contains='EOS',
-         representation(order='numericOrNULL',
-                        length='numericOrNULL',
-                        width='numericOrNULL',
-                        scale='numericOrNULL'
-                        ))
+setClass('EOS',representation('VIRTUAL',
+                              elementMetadata='ANY',
+                              elementType='character'),
+         prototype(elementType='ANY'))
 
-setClass('EOSTrackSector',contains='EOSTrack',
-         representation(data='IRanges'))
+setClass('GraphicPars',representation(pars='environment'))
 
-setClass('QtGraphicPars',representation(pars='environment'),
-         prototype(pars=new.env(parent=emptyenv())))
+setClass('EOSTrack',contains=c('GraphicPars'),
+         representation(data='RangedData',
+                        type='character'),
+         prototype(pars=new.env()))
 
+setClass('EOSView',contains=c('EOS','GraphicPars'),
+         representation(
+                     listData='list'
+                     ),
+         prototype(elementType='EOSTrack',
+                   pars=new.env()))
+
+
+     
